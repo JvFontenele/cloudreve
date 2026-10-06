@@ -1,3 +1,4 @@
 [submodule "assets"]
 	path = assets
-	url = https://github.com/cloudreve/frontend.git
+	url = https://github.com/JvFontenele/cloudreve-frontend.git
+	branch = transynex
