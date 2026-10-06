@@ -572,6 +572,12 @@ func initMasterRouter(dep dependency.Dep) *gin.Engine {
 				controllers.FromJSON[explorer.ArchiveWorkflowService](explorer.CreateArchiveParamCtx{}),
 				controllers.ExtractArchive,
 			)
+			// Create task to translate a file with Transynex
+			wf.POST("translate",
+				middleware.RequiredScopes(types.ScopeWorkflowWrite),
+				controllers.FromJSON[explorer.TranslateWorkflowService](explorer.CreateTranslateParamCtx{}),
+				controllers.CreateTranslate,
+			)
 
 			remoteDownload := wf.Group("download")
 			{

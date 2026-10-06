@@ -333,7 +333,7 @@ func (service *ListTaskService) ListTasks(c *gin.Context) (*TaskListResponse, er
 			PageToken:           service.NextPageToken,
 			PageSize:            service.PageSize,
 		},
-		Types:  []string{queue.CreateArchiveTaskType, queue.ExtractArchiveTaskType, queue.RelocateTaskType, queue.ImportTaskType},
+		Types:  []string{queue.CreateArchiveTaskType, queue.ExtractArchiveTaskType, queue.RelocateTaskType, queue.ImportTaskType, queue.TranslateTaskType},
 		UserID: user.ID,
 	}
 
@@ -480,4 +480,45 @@ func (service *RebuildFTSIndexWorkflowService) CreateRebuildFTSIndexTask(c *gin.
 	}
 
 	return BuildTaskResponse(t, nil, hasher), nil
+}
+
+type (
+	TranslateWorkflowService struct {
+		Src            string `json:"src" binding:"required"`
+		SourceLanguage string `json:"source_language" binding:"required,max=16"`
+		TargetLanguage string `json:"target_language" binding:"required,max=16"`
+	}
+	CreateTranslateParamCtx struct{}
+)
+
+// CreateTranslateTask Create task to translate a file with Transynex
+func (service *TranslateWorkflowService) CreateTranslateTask(c *gin.Context) (*TaskResponse, error) {
+	dep := dependency.FromContext(c)
+	user := inventory.UserFromContext(c)
+	m := manager.NewFileManager(dep, user)
+	defer m.Recycle()
+
+	src, err := fs.NewUriFromString(service.Src)
+	if err != nil {
+		return nil, serializer.NewError(serializer.CodeParamErr, "Invalid source file uri", err)
+	}
+
+	// O original precisa ser legível e a pasta dele gravável (o resultado vai ao lado)
+	if _, err := m.Get(c, src, dbfs.WithRequiredCapabilities(dbfs.NavigatorCapabilityDownloadFile), dbfs.WithNotRoot()); err != nil {
+		return nil, serializer.NewError(serializer.CodeParamErr, "Invalid source file", err)
+	}
+	if _, err := m.Get(c, src.DirUri(), dbfs.WithRequiredCapabilities(dbfs.NavigatorCapabilityCreateFile)); err != nil {
+		return nil, serializer.NewError(serializer.CodeParamErr, "Invalid destination", err)
+	}
+
+	t, err := workflows.NewTranslateTask(c, service.Src, service.SourceLanguage, service.TargetLanguage)
+	if err != nil {
+		return nil, serializer.NewError(serializer.CodeCreateTaskError, "Failed to create task", err)
+	}
+
+	if err := dep.IoIntenseQueue(c).QueueTask(c, t); err != nil {
+		return nil, serializer.NewError(serializer.CodeCreateTaskError, "Failed to queue task", err)
+	}
+
+	return BuildTaskResponse(t, nil, dep.HashIDEncoder()), nil
 }

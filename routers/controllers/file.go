@@ -84,6 +84,19 @@ func RebuildFTSIndex(c *gin.Context) {
 }
 
 // ExtractArchive creates extract archive task
+// CreateTranslate creates a task to translate a file with Transynex
+func CreateTranslate(c *gin.Context) {
+	service := ParametersFromContext[*explorer.TranslateWorkflowService](c, explorer.CreateTranslateParamCtx{})
+	resp, err := service.CreateTranslateTask(c)
+	if err != nil {
+		c.JSON(200, serializer.Err(c, err))
+		c.Abort()
+		return
+	}
+
+	c.JSON(200, serializer.Response{Data: resp})
+}
+
 func ExtractArchive(c *gin.Context) {
 	service := ParametersFromContext[*explorer.ArchiveWorkflowService](c, explorer.CreateArchiveParamCtx{})
 	resp, err := service.CreateExtractTask(c)
