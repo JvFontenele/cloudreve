@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"os"
 	"path"
@@ -174,7 +176,11 @@ func (m *TranslateTask) submit(ctx context.Context, dep dependency.Dep, api *tra
 	body, w := io.Pipe()
 	form := multipart.NewWriter(w)
 	go func() {
-		part, err := form.CreateFormFile("file", file.DisplayName())
+		// Tipo explícito: o Transynex valida pelo Content-Type da parte
+		header := textproto.MIMEHeader{}
+		header.Set("Content-Disposition", mime.FormatMediaType("form-data", map[string]string{"name": "file", "filename": file.DisplayName()}))
+		header.Set("Content-Type", translateMimeFor(file.DisplayName()))
+		part, err := form.CreatePart(header)
 		if err == nil {
 			_, err = io.Copy(part, es)
 		}
@@ -199,6 +205,20 @@ func (m *TranslateTask) submit(ctx context.Context, dep dependency.Dep, api *tra
 	m.l.Info("File %q submitted to Transynex project %s", uri, res.ProjectID)
 	m.ResumeAfter(translatePollInterval)
 	return task.StatusSuspending, nil
+}
+
+// Mesma tabela do Transynex (apps/backend/src/routes.ts MIME_BY_EXT)
+var translateInputMime = map[string]string{
+	".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp",
+	".tif": "image/tiff", ".tiff": "image/tiff", ".pdf": "application/pdf", ".zip": "application/zip",
+	".cbz": "application/x-cbz", ".epub": "application/epub+zip",
+}
+
+func translateMimeFor(name string) string {
+	if m, ok := translateInputMime[strings.ToLower(path.Ext(name))]; ok {
+		return m
+	}
+	return "application/octet-stream"
 }
 
 // translateFormatFor devolve o resultado no mesmo formato do original.
